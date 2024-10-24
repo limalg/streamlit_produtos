@@ -1,0 +1,5 @@
+streamlit
+pyairtable
+python-dotenv
+pandas
+plotly
