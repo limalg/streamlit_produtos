@@ -8,7 +8,7 @@ from datetime import datetime
 @dataclass
 class TableConfig:
     COLUMNS = [
-        'status', 'createdTime', 'titulo', 'de_prieco',
+        'status', 'createdTime', 'data_envio', 'titulo', 'de_prieco',
         'para_price', 'desconto', 'parcelas', 'imagem'
     ]
     
@@ -29,6 +29,12 @@ class TableConfig:
             format="DD/MM/YYYY HH:mm",
             width="small",
         ),
+        "data_envio": st.column_config.DatetimeColumn(
+            "Data Sent",
+            help="Record data sending time",
+            format="DD/MM/YYYY HH:mm",
+            width="small",
+        ),        
         "titulo": st.column_config.TextColumn(
             "Title",
             help="Record title",
@@ -107,7 +113,8 @@ class DataFrameManager:
         record_ids = df['id'].tolist()
         df_new = pd.json_normalize(df['fields'])
         df_new['createdTime'] = pd.to_datetime(df['createdTime'])
-        
+        df_new['data_envio'] = pd.to_datetime(df_new.get('data_envio', pd.NaT))
+
         df = df_new[TableConfig.COLUMNS]
         df.insert(0, 'select', False)
         
@@ -121,7 +128,8 @@ class DataFrameManager:
         mask = (
             df['titulo'].str.contains(search_term, case=False, na=False) |
             df['status'].str.contains(search_term, case=False, na=False) |
-            df['createdTime'].astype(str).str.contains(search_term, case=False, na=False)
+            df['createdTime'].astype(str).str.contains(search_term, case=False, na=False) |
+            df['data_envio'].astype(str).str.contains(search_term, case=False, na=False)
         )
         return df[mask]
 
@@ -225,9 +233,13 @@ def show():
         
         if select_all:
             df['select'] = True
-            
+
+        # Sort DataFrame by 'data_envio' in descending order (most recent first)
+        df = df.sort_values(by='data_envio', ascending=False, na_position='last').reset_index(drop=True)
+        
         st.markdown(f"📊 **Total records: {len(df)}**")
         
+        # Apply search filter
         df = DataFrameManager.apply_search_filter(df, search)
         if search:
             st.markdown(f"🔍 **Showing {len(df)} filtered results**")
@@ -238,3 +250,4 @@ def show():
             
     except Exception as e:
         st.error(f"❌ Error: {str(e)}")
+
