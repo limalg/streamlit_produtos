@@ -9,7 +9,7 @@ from datetime import datetime
 class TableConfig:
     COLUMNS = [
         'status', 'createdTime', 'data_envio', 'titulo', 'de_prieco',
-        'para_price', 'desconto', 'parcelas', 'imagem'
+        'para_price', 'desconto', 'parcelas', 'imagem', 'id'
     ]
     
     COLUMN_CONFIG = {
@@ -112,6 +112,7 @@ class DataFrameManager:
         df = pd.DataFrame(records)
         record_ids = df['id'].tolist()
         df_new = pd.json_normalize(df['fields'])
+        df_new['id'] = df['id']
         df_new['createdTime'] = pd.to_datetime(df['createdTime'])
         df_new['data_envio'] = pd.to_datetime(df_new.get('data_envio', pd.NaT))
 
@@ -206,16 +207,19 @@ class UI:
         
         if not selected_records.empty:
             col1, col2, _ = st.columns(3)
-            selected_indices = selected_records.index.tolist()
-            selected_ids = [record_ids[i] for i in selected_indices]
+            #selected_indices = selected_records.index.tolist()
+            #print(selected_records.columns)
+            selected_indices = selected_records['id']
+            #selected_ids = [record_ids[i] for i in selected_indices]
             
             with col1:
                 if st.button("🗑️ Delete", type="secondary"):
-                    record_manager.delete_records(selected_ids)
-            
+                    #record_manager.delete_records(selected_ids)
+                    record_manager.delete_records(selected_indices)
+
             with col2:
                 if st.button("✏️ Altera Status", type="secondary"):
-                    record_manager.update_status(selected_ids)
+                    record_manager.update_status(selected_indices)
 
 def show():
     try:
@@ -236,6 +240,7 @@ def show():
 
         # Sort DataFrame by 'data_envio' in descending order (most recent first)
         df = df.sort_values(by='data_envio', ascending=False, na_position='last').reset_index(drop=True)
+        df = df[['select','status', 'createdTime', 'data_envio','titulo', 'de_prieco', 'para_price', 'imagem', 'id']]
         
         st.markdown(f"📊 **Total records: {len(df)}**")
         
