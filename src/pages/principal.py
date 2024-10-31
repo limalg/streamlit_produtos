@@ -8,7 +8,7 @@ from datetime import datetime
 @dataclass
 class TableConfig:
     COLUMNS = [
-        'status', 'createdTime', 'data_envio', 'titulo', 'de_prieco',
+        'status', 'data_envio', 'titulo', 'de_prieco',
         'para_price', 'desconto', 'parcelas', 'imagem', 'id'
     ]
     
@@ -21,12 +21,6 @@ class TableConfig:
         "status": st.column_config.Column(
             "Status",
             help="Record status",
-            width="small",
-        ),
-        "createdTime": st.column_config.DatetimeColumn(
-            "Created At",
-            help="Record creation time",
-            format="DD/MM/YYYY HH:mm",
             width="small",
         ),
         "data_envio": st.column_config.DatetimeColumn(
@@ -85,8 +79,13 @@ class RecordManager:
 
     def update_status(self, record_ids: List[str]) -> None:
         try:
+            data_envio_atual = datetime.now().strftime("%d/%m/%Y, %H:%M")
+            
             for record_id in record_ids:
-                self.airtable.update_record(record_id, {"status": "Ativo"})
+                self.airtable.update_record(record_id, {
+                    "status": "Ativo",
+                    "data_envio": data_envio_atual
+                })
             st.success(f"Successfully updated {len(record_ids)} record(s) to 'Ativo'")
             st.rerun()
         except Exception as e:
@@ -113,8 +112,7 @@ class DataFrameManager:
         record_ids = df['id'].tolist()
         df_new = pd.json_normalize(df['fields'])
         df_new['id'] = df['id']
-        df_new['createdTime'] = pd.to_datetime(df['createdTime'])
-        df_new['data_envio'] = pd.to_datetime(df_new.get('data_envio', pd.NaT))
+        df_new['data_envio'] = pd.to_datetime(df_new["data_envio"], format="%d/%m/%Y, %H:%M", dayfirst=True, errors='coerce')
 
         df = df_new[TableConfig.COLUMNS]
         df.insert(0, 'select', False)
@@ -129,10 +127,106 @@ class DataFrameManager:
         mask = (
             df['titulo'].str.contains(search_term, case=False, na=False) |
             df['status'].str.contains(search_term, case=False, na=False) |
-            df['createdTime'].astype(str).str.contains(search_term, case=False, na=False) |
             df['data_envio'].astype(str).str.contains(search_term, case=False, na=False)
         )
         return df[mask]
+
+def create_record_form():
+    with st.form("record_form"):
+        titulo = st.text_input("Título")
+        links = st.text_input("Links de Produtos")
+        col1, col2 = st.columns(2)
+        with col1:
+            de_prieco = st.number_input("Preço Original", min_value=0.0, step=0.01)
+            desconto = st.number_input("Desconto %", min_value=0, max_value=100)
+        with col2:
+            para_price = st.number_input("Preço Final", min_value=0.0, step=0.01)
+            parcelas = st.number_input("Parcelas", min_value=1, step=1)
+        
+        imagem = st.text_input("URL da Imagem")
+        status = st.selectbox("Status", ["Pendente", "Ativo", "Inativo"])
+        
+        submitted = st.form_submit_button("Criar Registro")
+        if submitted:
+            record_data = {
+                "links": links,
+                "titulo": titulo,
+                "de_prieco": str(de_prieco),
+                "para_price": str(para_price),
+                "desconto": str(desconto),
+                "parcelas": str(parcelas),
+                "imagem": imagem,
+                "status": status,
+                "data_envio": str(datetime.now().strftime("%d/%m/%Y, %H:%M"))
+            }
+            return record_data
+    return None
+
+def edit_record_form(record_data):
+    with st.form("edit_form"):
+        titulo = st.text_input("Título", value=record_data.get("titulo", ""))
+        links = st.text_input("Link", value=record_data.get("links", ""))
+        col1, col2 = st.columns(2)
+        with col1:
+            de_prieco = st.text_input("Preço Original", value=record_data.get("de_prieco", ""))
+            desconto = st.text_input("Desconto %", value=record_data.get("desconto", ""))
+        with col2:
+            para_price = st.text_input("Preço Final", value=record_data.get("para_price", ""))
+            parcelas = st.text_input("Parcelas", value=record_data.get("parcelas", ""))
+        
+        imagem = st.text_input("URL da Imagem", value=record_data.get("imagem", ""))
+        status = st.selectbox("Status", ["Pendente", "Ativo", "Inativo"], index=["Pendente", "Ativo", "Inativo"].index(record_data.get("status", "Pendente")))
+        
+        submitted = st.form_submit_button("Atualizar Registro")
+        if submitted:
+            updated_data = {
+                "links": links,
+                "titulo": titulo,
+                "de_prieco": str(de_prieco),
+                "para_price": str(para_price),
+                "desconto": str(desconto),
+                "parcelas": str(parcelas),
+                "imagem": imagem,
+                "status": status,
+                "data_envio": str(datetime.now().strftime("%d/%m/%Y, %H:%M"))
+            }
+            return updated_data
+    return None
+
+def show_cards_view(df):
+    if df.empty:
+        st.info("No records to display.")
+        return
+    
+    #df['de_prieco'] = df['de_prieco'].astype(str).replace({'R\$ ': '', 'R$': ''}, regex=True)
+    #df['para_price'] = df['para_price'].replace('R$', '')
+    #print(df)
+    cols = st.columns(3)
+    for idx, row in df.iterrows():
+        with cols[idx % 3]:
+            with st.container():
+                try:
+                    # Verifica se a imagem é válida
+                    if pd.notnull(row['imagem']):
+                        st.image(row['imagem'], use_column_width=True)
+                    else:
+                        st.image("default_image_url.jpg", use_column_width=True)  # Coloque uma imagem padrão se não houver imagem
+
+                    st.markdown(f"### {row['titulo']}")
+                    st.markdown(f"**Status:** {row['status']}")
+
+                    # Verifica se a data de envio não é nula
+                    if pd.notnull(row['data_envio']):
+                        st.markdown(f"**Data:** {row['data_envio'].strftime('%d/%m/%Y, %H:%M')}")
+                    else:
+                        st.markdown("**Data:** N/A")
+
+                    st.markdown(f"**De:**  {row['de_prieco']}")
+                    st.markdown(f"**Por:**  {row['para_price']}")
+                    st.markdown("---")
+                except Exception as e:
+                    st.error(f"Error displaying card: {str(e)}")
+
 
 class UI:
     CUSTOM_CSS = """
@@ -207,14 +301,9 @@ class UI:
         
         if not selected_records.empty:
             col1, col2, _ = st.columns(3)
-            #selected_indices = selected_records.index.tolist()
-            #print(selected_records.columns)
-            selected_indices = selected_records['id']
-            #selected_ids = [record_ids[i] for i in selected_indices]
-            
+            selected_indices = selected_records['id']            
             with col1:
                 if st.button("🗑️ Delete", type="secondary"):
-                    #record_manager.delete_records(selected_ids)
                     record_manager.delete_records(selected_indices)
 
             with col2:
@@ -227,32 +316,54 @@ def show():
         airtable = AirtableManager()
         record_manager = RecordManager(airtable)
         
-        records = airtable.read_records()
-        if not records:
-            st.info("🔍 No records found in the database.")
-            return
-            
-        select_all, search = UI.create_top_controls()
-        df, record_ids = DataFrameManager.create_dataframe(records)
+        tab1, tab2, tab3, tab4 = st.tabs(["📋 Lista", "🖼️ Cards", "➕ Novo", "✏️ Editar"])
         
-        if select_all:
-            df['select'] = True
+        with tab1:
+            records = airtable.read_records()
+            if not records:
+                st.info("🔍 No records found in the database.")
+                return
+                
+            select_all, search = UI.create_top_controls()
+            df, record_ids = DataFrameManager.create_dataframe(records)
+            
+            if select_all:
+                df['select'] = True
 
-        # Sort DataFrame by 'data_envio' in descending order (most recent first)
-        df = df.sort_values(by='data_envio', ascending=False, na_position='last').reset_index(drop=True)
-        df = df[['select','status', 'createdTime', 'data_envio','titulo', 'de_prieco', 'para_price', 'imagem', 'id']]
-        
-        st.markdown(f"📊 **Total records: {len(df)}**")
-        
-        # Apply search filter
-        df = DataFrameManager.apply_search_filter(df, search)
-        if search:
-            st.markdown(f"🔍 **Showing {len(df)} filtered results**")
+            df = df.sort_values(by='data_envio', ascending=False, na_position='last').reset_index(drop=True)
+            df = df[['select','status', 'data_envio','titulo', 'de_prieco', 'para_price', 'imagem', 'id']]
             
-        with st.container():
-            edited_df = UI.display_table(df)
-            UI.handle_selected_records(edited_df, record_ids, record_manager)
+            st.markdown(f"📊 **Total records: {len(df)}**")
+            df = DataFrameManager.apply_search_filter(df, search)
+            if search:
+                st.markdown(f"🔍 **Showing {len(df)} filtered results**")
+                
+            with st.container():
+                edited_df = UI.display_table(df)
+                UI.handle_selected_records(edited_df, record_ids, record_manager)
+
+        with tab2:
+            show_cards_view(df)
             
+        with tab3:
+            new_record = create_record_form()
+            if new_record:
+                record_manager.create_record(new_record)
+                
+        with tab4:
+            record_id = st.selectbox("Selecione o registro para editar", 
+                                   options=df['id'].tolist(),
+                                   format_func=lambda x: df[df['id'] == x]['titulo'].iloc[0])
+            if record_id:
+                record_data = df[df['id'] == record_id].iloc[0].to_dict()
+                updated_data = edit_record_form(record_data)
+                if updated_data:
+                    record_manager.airtable.update_record(record_id, updated_data)
+                    st.success("Registro atualizado com sucesso!")
+                    st.rerun()
+                    
     except Exception as e:
         st.error(f"❌ Error: {str(e)}")
 
+if __name__ == "__main__":
+    show()
