@@ -111,7 +111,8 @@ class DataFrameManager:
         record_ids = df['id'].tolist()
         df_new = pd.json_normalize(df['fields'])
         df_new['id'] = df['id']
-        df_new['data_envio'] = pd.to_datetime(df_new["data_envio"], errors='coerce').dt.tz_convert('America/Sao_Paulo')
+        #df_new['data_envio'] = pd.to_datetime(df_new["data_envio"], errors='coerce').dt.tz_convert('America/Sao_Paulo')
+        df_new['data_envio'] = pd.to_datetime(df_new["data_envio"], errors='coerce').dt.tz_localize('UTC').dt.tz_convert('America/Sao_Paulo')
         df_new['data_envio'] = df_new['data_envio'].dt.strftime("%d/%m/%Y, %H:%M")
 
 
