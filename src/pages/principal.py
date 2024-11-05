@@ -103,6 +103,14 @@ class RecordManager:
             return self.airtable.read_records()
         except Exception as e:
             st.error(f"Error getting records: {str(e)}")
+    
+
+    # Define a function to check if the timestamp is tz-aware and apply the correct conversion
+    def convert_to_brasilia_time(timestamp):
+        if timestamp.tzinfo is None:  # tz-naive, localize to UTC
+            return timestamp.tz_localize('UTC').tz_convert('America/Sao_Paulo')
+        else:  # tz-aware, directly convert
+            return timestamp.tz_convert('America/Sao_Paulo')
 
 class DataFrameManager:
     @staticmethod
@@ -111,8 +119,7 @@ class DataFrameManager:
         record_ids = df['id'].tolist()
         df_new = pd.json_normalize(df['fields'])
         df_new['id'] = df['id']
-        #df_new['data_envio'] = pd.to_datetime(df_new["data_envio"], errors='coerce').dt.tz_convert('America/Sao_Paulo')
-        df_new['data_envio'] = pd.to_datetime(df_new["data_envio"], errors='coerce').dt.tz_localize('UTC').dt.tz_convert('America/Sao_Paulo')
+        df_new['data_envio'] = pd.to_datetime(df_new["data_envio"], errors='coerce').apply(RecordManager.convert_to_brasilia_time)
         df_new['data_envio'] = df_new['data_envio'].dt.strftime("%d/%m/%Y, %H:%M")
 
 
