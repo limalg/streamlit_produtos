@@ -8,8 +8,8 @@ from datetime import datetime
 @dataclass
 class TableConfig:
     COLUMNS = [
-        'status', 'data_envio', 'titulo', 'de_prieco',
-        'para_price', 'desconto', 'parcelas', 'imagem', 'id'
+        'status', 'data_envio', 'titulo', 'de_preconew',
+        'para_preco', 'cupom', 'parcelas', 'imagem', 'id'
     ]
     
     COLUMN_CONFIG = {
@@ -23,10 +23,9 @@ class TableConfig:
             help="Record status",
             width="small",
         ),
-        "data_envio": st.column_config.DatetimeColumn(
+        "data_envio": st.column_config.TextColumn(
             "Data Sent",
             help="Record data sending time",
-            format="DD/MM/YYYY HH:mm",
             width="small",
         ),        
         "titulo": st.column_config.TextColumn(
@@ -34,19 +33,19 @@ class TableConfig:
             help="Record title",
             width="medium",
         ),
-        "de_prieco": st.column_config.NumberColumn(
+        "de_preconew": st.column_config.NumberColumn(
             "Original Price",
             help="Original price",
             format="R$ %.2f",
             width="small",
         ),
-        "para_price": st.column_config.NumberColumn(
+        "para_preco": st.column_config.NumberColumn(
             "Final Price",
             help="Final price",
             format="R$ %.2f",
             width="small",
         ),
-        "desconto": st.column_config.NumberColumn(
+        "cupom": st.column_config.NumberColumn(
             "Discount",
             help="Discount percentage",
             format="%.0f%%",
@@ -83,7 +82,7 @@ class RecordManager:
             
             for record_id in record_ids:
                 self.airtable.update_record(record_id, {
-                    "status": "Ativo",
+                    "status": "ativo",
                     "data_envio": data_envio_atual
                 })
             st.success(f"Successfully updated {len(record_ids)} record(s) to 'Ativo'")
@@ -112,7 +111,9 @@ class DataFrameManager:
         record_ids = df['id'].tolist()
         df_new = pd.json_normalize(df['fields'])
         df_new['id'] = df['id']
-        df_new['data_envio'] = pd.to_datetime(df_new["data_envio"], format="%d/%m/%Y, %H:%M", dayfirst=True, errors='coerce')
+        df_new['data_envio'] = pd.to_datetime(df_new["data_envio"], errors='coerce').dt.tz_convert('America/Sao_Paulo')
+        df_new['data_envio'] = df_new['data_envio'].dt.strftime("%d/%m/%Y, %H:%M")
+
 
         df = df_new[TableConfig.COLUMNS]
         df.insert(0, 'select', False)
@@ -127,7 +128,7 @@ class DataFrameManager:
         mask = (
             df['titulo'].str.contains(search_term, case=False, na=False) |
             df['status'].str.contains(search_term, case=False, na=False) |
-            df['data_envio'].astype(str).str.contains(search_term, case=False, na=False)
+            df['data_envio'].str.contains(search_term, case=False, na=False)
         )
         return df[mask]
 
@@ -137,27 +138,27 @@ def create_record_form():
         links = st.text_input("Links de Produtos")
         col1, col2 = st.columns(2)
         with col1:
-            de_prieco = st.number_input("Preço Original", min_value=0.0, step=0.01)
-            desconto = st.number_input("Desconto %", min_value=0, max_value=100)
+            de_preco = st.number_input("Preço Original",value=0.0, min_value=0.0, step=0.01)
+            cupom = st.text_input("Cupom")
         with col2:
-            para_price = st.number_input("Preço Final", min_value=0.0, step=0.01)
-            parcelas = st.number_input("Parcelas", min_value=1, step=1)
+            para_preco = st.number_input("Preço Final",value=0.0, min_value=0.0, step=0.01)
+            parcelas = st.text_input("Parcelas")
         
         imagem = st.text_input("URL da Imagem")
-        status = st.selectbox("Status", ["Pendente", "Ativo", "Inativo"])
+        status = st.selectbox("Status", ["pendente", "ativo", "inativo"])
         
         submitted = st.form_submit_button("Criar Registro")
         if submitted:
             record_data = {
                 "links": links,
                 "titulo": titulo,
-                "de_prieco": str(de_prieco),
-                "para_price": str(para_price),
-                "desconto": str(desconto),
-                "parcelas": str(parcelas),
+                "de_preco": de_preco,
+                "para_preco": para_preco,
+                "cupom": cupom,
+                "parcelas": parcelas,
                 "imagem": imagem,
                 "status": status,
-                "data_envio": str(datetime.now().strftime("%d/%m/%Y, %H:%M"))
+                #"data_envio": datetime.now().strftime("%d/%m/%Y, %H:%M")
             }
             return record_data
     return None
@@ -168,27 +169,27 @@ def edit_record_form(record_data):
         links = st.text_input("Link", value=record_data.get("links", ""))
         col1, col2 = st.columns(2)
         with col1:
-            de_prieco = st.text_input("Preço Original", value=record_data.get("de_prieco", ""))
-            desconto = st.text_input("Desconto %", value=record_data.get("desconto", ""))
+            de_preco = st.number_input("Preço Original", value=float(record_data.get("de_preco", 0.0)))
+            cupom = st.text_input("Desconto %", value=record_data.get("cupom", ""))
         with col2:
-            para_price = st.text_input("Preço Final", value=record_data.get("para_price", ""))
+            para_preco = st.number_input("Preço Final", value=float(record_data.get("para_preco", 0.0)))
             parcelas = st.text_input("Parcelas", value=record_data.get("parcelas", ""))
         
         imagem = st.text_input("URL da Imagem", value=record_data.get("imagem", ""))
-        status = st.selectbox("Status", ["Pendente", "Ativo", "Inativo"], index=["Pendente", "Ativo", "Inativo"].index(record_data.get("status", "Pendente")))
+        status = st.selectbox("Status", ["pendente", "ativo", "inativo"], index=["pendente", "ativo", "inativo"].index(record_data.get("status", "pendente")))
         
         submitted = st.form_submit_button("Atualizar Registro")
         if submitted:
             updated_data = {
                 "links": links,
                 "titulo": titulo,
-                "de_prieco": str(de_prieco),
-                "para_price": str(para_price),
-                "desconto": str(desconto),
-                "parcelas": str(parcelas),
+                "de_preco": de_preco,
+                "para_preco": para_preco,
+                "cupom": cupom,
+                "parcelas": parcelas,
                 "imagem": imagem,
                 "status": status,
-                "data_envio": str(datetime.now().strftime("%d/%m/%Y, %H:%M"))
+                #"data_envio": datetime.now().strftime("%d/%m/%Y, %H:%M")
             }
             return updated_data
     return None
@@ -198,9 +199,6 @@ def show_cards_view(df):
         st.info("No records to display.")
         return
     
-    #df['de_prieco'] = df['de_prieco'].astype(str).replace({'R\$ ': '', 'R$': ''}, regex=True)
-    #df['para_price'] = df['para_price'].replace('R$', '')
-    #print(df)
     cols = st.columns(3)
     for idx, row in df.iterrows():
         with cols[idx % 3]:
@@ -217,12 +215,12 @@ def show_cards_view(df):
 
                     # Verifica se a data de envio não é nula
                     if pd.notnull(row['data_envio']):
-                        st.markdown(f"**Data:** {row['data_envio'].strftime('%d/%m/%Y, %H:%M')}")
+                        st.markdown(f"**Data:** {row['data_envio']}")
                     else:
                         st.markdown("**Data:** N/A")
 
-                    st.markdown(f"**De:**  {row['de_prieco']}")
-                    st.markdown(f"**Por:**  {row['para_price']}")
+                    st.markdown(f"**De:**  {row['de_preconew']}")
+                    st.markdown(f"**Por:**  {row['para_preco']}")
                     st.markdown("---")
                 except Exception as e:
                     st.error(f"Error displaying card: {str(e)}")
@@ -329,9 +327,8 @@ def show():
             
             if select_all:
                 df['select'] = True
-
             df = df.sort_values(by='data_envio', ascending=False, na_position='last').reset_index(drop=True)
-            df = df[['select','status', 'data_envio','titulo', 'de_prieco', 'para_price', 'imagem', 'id']]
+            df = df[['select','status', 'data_envio','titulo', 'de_preconew', 'para_preco', 'imagem', 'id']]
             
             st.markdown(f"📊 **Total records: {len(df)}**")
             df = DataFrameManager.apply_search_filter(df, search)
@@ -342,8 +339,8 @@ def show():
                 edited_df = UI.display_table(df)
                 UI.handle_selected_records(edited_df, record_ids, record_manager)
 
-        with tab2:
-            show_cards_view(df)
+        #with tab2:
+        #    show_cards_view(df)
             
         with tab3:
             new_record = create_record_form()
