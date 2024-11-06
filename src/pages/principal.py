@@ -77,13 +77,10 @@ class RecordManager:
             st.error(f"Error deleting records: {str(e)}")
 
     def update_status(self, record_ids: List[str]) -> None:
-        try:
-            data_envio_atual = datetime.now().strftime("%d/%m/%Y, %H:%M")
-            
+        try:            
             for record_id in record_ids:
                 self.airtable.update_record(record_id, {
-                    "status": "ativo",
-                    "data_envio": data_envio_atual
+                    "status": "ativo"
                 })
             st.success(f"Successfully updated {len(record_ids)} record(s) to 'Ativo'")
             st.rerun()
@@ -113,6 +110,16 @@ class RecordManager:
             return timestamp.tz_convert('America/Sao_Paulo')
 
 class DataFrameManager:
+    @staticmethod
+    def create_dataframe_links(records: List[Dict[str, Any]]) -> tuple[pd.DataFrame, List[str]]:
+        df = pd.DataFrame(records)
+        record_ids = df['id'].tolist()
+        df_new = pd.json_normalize(df['fields'])
+        df_new['id'] = df['id']
+        df_new['data_envio'] = pd.to_datetime(df_new["data_envio"], errors='coerce').apply(RecordManager.convert_to_brasilia_time)
+        df_new['data_envio'] = df_new['data_envio'].dt.strftime("%d/%m/%Y, %H:%M")
+        return df_new,record_ids
+
     @staticmethod
     def create_dataframe(records: List[Dict[str, Any]]) -> tuple[pd.DataFrame, List[str]]:
         df = pd.DataFrame(records)
@@ -321,11 +328,15 @@ def show():
         UI.setup_page()
         airtable = AirtableManager()
         record_manager = RecordManager(airtable)
-        
+        airtable_links = AirtableManager(table_name="links")
+
         tab1, tab2, tab3, tab4 = st.tabs(["📋 Lista", "🖼️ Cards", "➕ Novo", "✏️ Editar"])
         
         with tab1:
             records = airtable.read_records()
+            records_links = airtable_links.read_records()
+            df_links, record_ids_links = DataFrameManager.create_dataframe_links(records_links)
+
             if not records:
                 st.info("🔍 No records found in the database.")
                 return
@@ -347,9 +358,16 @@ def show():
                 edited_df = UI.display_table(df)
                 UI.handle_selected_records(edited_df, record_ids, record_manager)
 
-        #with tab2:
-        #    show_cards_view(df)
+        with tab2:
+            df_links['data_envio'] = pd.to_datetime(df_links["data_envio"],format='%d/%m/%Y, %H:%M')
+            df_links = df_links[['link_afiliado','status','cupom', 'data_envio']]
+            df_links = df_links.sort_values(by='data_envio', ascending=False, na_position='last').reset_index(drop=True)
             
+            st.title("🔗 Links")
+            st.dataframe(df_links) 
+  
+
+
         with tab3:
             new_record = create_record_form()
             if new_record:

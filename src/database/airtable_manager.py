@@ -6,10 +6,10 @@ import requests
 load_dotenv()
 
 class AirtableManager:
-    def __init__(self):
+    def __init__(self,table_name=None):
         self.api_key = os.getenv("AIRTABLE_API_KEY")
         self.base_id = os.getenv("AIRTABLE_BASE_ID")
-        self.table_name = os.getenv("AIRTABLE_TABLE_NAME")
+        self.table_name = table_name or os.getenv("AIRTABLE_TABLE_NAME")
         self.api = Api(self.api_key)
         self.table = self.api.table(self.base_id, self.table_name)
     
