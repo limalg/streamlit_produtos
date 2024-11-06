@@ -100,13 +100,35 @@ class RecordManager:
             return self.airtable.read_records()
         except Exception as e:
             st.error(f"Error getting records: {str(e)}")
-    
 
-    # Define a function to check if the timestamp is tz-aware and apply the correct conversion
+    def check_duplicate_link(self, link: str, df: pd.DataFrame) -> bool:
+        return (
+            (df['link_produto'] == link).any() or
+            (df['link_outrosafiliados'] == link).any() or
+            (df['link_curtoml'] == link).any()
+        )
+
+    def create_link_record(self, link: str, link_type: str, cupom: str) -> None:
+        #current_time = datetime.now().strftime("%d/%m/%Y, %H:%M")
+        record_data = {
+            "status": "pendente",
+            #"data_envio": current_time,
+            "cupom": cupom
+        }
+        
+        if link_type == "Link de Outros Afialidos/Meu Link":
+            record_data["link_outrosafiliados"] = link
+        elif link_type == "Link Curto MercadoLivre":
+            record_data["link_curtoml"] = link
+        else:
+            record_data["link_produto"] = link
+            
+        self.create_record(record_data)
+
     def convert_to_brasilia_time(timestamp):
-        if timestamp.tzinfo is None:  # tz-naive, localize to UTC
+        if timestamp.tzinfo is None:
             return timestamp.tz_localize('UTC').tz_convert('America/Sao_Paulo')
-        else:  # tz-aware, directly convert
+        else:
             return timestamp.tz_convert('America/Sao_Paulo')
 
 class DataFrameManager:
@@ -118,7 +140,9 @@ class DataFrameManager:
         df_new['id'] = df['id']
         df_new['data_envio'] = pd.to_datetime(df_new["data_envio"], errors='coerce').apply(RecordManager.convert_to_brasilia_time)
         df_new['data_envio'] = df_new['data_envio'].dt.strftime("%d/%m/%Y, %H:%M")
-        return df_new,record_ids
+        df_new['CreatedTime'] = pd.to_datetime(df_new["CreatedTime"], errors='coerce').apply(RecordManager.convert_to_brasilia_time)
+        df_new['CreatedTime'] = df_new['CreatedTime'].dt.strftime("%d/%m/%Y, %H:%M")
+        return df_new, record_ids
 
     @staticmethod
     def create_dataframe(records: List[Dict[str, Any]]) -> tuple[pd.DataFrame, List[str]]:
@@ -128,7 +152,6 @@ class DataFrameManager:
         df_new['id'] = df['id']
         df_new['data_envio'] = pd.to_datetime(df_new["data_envio"], errors='coerce').apply(RecordManager.convert_to_brasilia_time)
         df_new['data_envio'] = df_new['data_envio'].dt.strftime("%d/%m/%Y, %H:%M")
-
 
         df = df_new[TableConfig.COLUMNS]
         df.insert(0, 'select', False)
@@ -149,31 +172,18 @@ class DataFrameManager:
 
 def create_record_form():
     with st.form("record_form"):
-        titulo = st.text_input("Título")
-        links = st.text_input("Links de Produtos")
-        col1, col2 = st.columns(2)
-        with col1:
-            de_preco = st.number_input("Preço Original",value=0.0, min_value=0.0, step=0.01)
-            cupom = st.text_input("Cupom")
-        with col2:
-            para_preco = st.number_input("Preço Final",value=0.0, min_value=0.0, step=0.01)
-            parcelas = st.text_input("Parcelas")
-        
-        imagem = st.text_input("URL da Imagem")
-        status = st.selectbox("Status", ["pendente", "ativo", "inativo"])
-        
+        genre = st.radio(
+            "Qual tipo de Link",
+            ["Link de Outros Afialidos/Meu Link", "Link Curto MercadoLivre", "Link do Produtos"]
+        )
+        links = st.text_input("Informe o link")
+        cupom = st.text_input("Cupom")
         submitted = st.form_submit_button("Criar Registro")
         if submitted:
             record_data = {
                 "links": links,
-                "titulo": titulo,
-                "de_preco": de_preco,
-                "para_preco": para_preco,
                 "cupom": cupom,
-                "parcelas": parcelas,
-                "imagem": imagem,
-                "status": status,
-                #"data_envio": datetime.now().strftime("%d/%m/%Y, %H:%M")
+                "tipo_link": genre
             }
             return record_data
     return None
@@ -204,42 +214,9 @@ def edit_record_form(record_data):
                 "parcelas": parcelas,
                 "imagem": imagem,
                 "status": status,
-                #"data_envio": datetime.now().strftime("%d/%m/%Y, %H:%M")
             }
             return updated_data
     return None
-
-def show_cards_view(df):
-    if df.empty:
-        st.info("No records to display.")
-        return
-    
-    cols = st.columns(3)
-    for idx, row in df.iterrows():
-        with cols[idx % 3]:
-            with st.container():
-                try:
-                    # Verifica se a imagem é válida
-                    if pd.notnull(row['imagem']):
-                        st.image(row['imagem'], use_column_width=True)
-                    else:
-                        st.image("default_image_url.jpg", use_column_width=True)  # Coloque uma imagem padrão se não houver imagem
-
-                    st.markdown(f"### {row['titulo']}")
-                    st.markdown(f"**Status:** {row['status']}")
-
-                    # Verifica se a data de envio não é nula
-                    if pd.notnull(row['data_envio']):
-                        st.markdown(f"**Data:** {row['data_envio']}")
-                    else:
-                        st.markdown("**Data:** N/A")
-
-                    st.markdown(f"**De:**  {row['de_preconew']}")
-                    st.markdown(f"**Por:**  {row['para_preco']}")
-                    st.markdown("---")
-                except Exception as e:
-                    st.error(f"Error displaying card: {str(e)}")
-
 
 class UI:
     CUSTOM_CSS = """
@@ -329,8 +306,9 @@ def show():
         airtable = AirtableManager()
         record_manager = RecordManager(airtable)
         airtable_links = AirtableManager(table_name="links")
+        links_manager = RecordManager(airtable_links)
 
-        tab1, tab2, tab3, tab4 = st.tabs(["📋 Lista", "🖼️ Cards", "➕ Novo", "✏️ Editar"])
+        tab1, tab2, tab3, tab4 = st.tabs(["📋 Lista", "🖼️ Links", "➕ Novo", "✏️ Editar"])
         
         with tab1:
             records = airtable.read_records()
@@ -347,7 +325,7 @@ def show():
             if select_all:
                 df['select'] = True
             df = df.sort_values(by='data_envio', ascending=False, na_position='last').reset_index(drop=True)
-            df = df[['select','status', 'data_envio','titulo', 'de_preconew', 'para_preco', 'imagem', 'id']]
+            df = df[['select','status', 'data_envio','titulo','cupom', 'de_preconew', 'para_preco', 'imagem', 'id']]
             
             st.markdown(f"📊 **Total records: {len(df)}**")
             df = DataFrameManager.apply_search_filter(df, search)
@@ -360,19 +338,25 @@ def show():
 
         with tab2:
             df_links['data_envio'] = pd.to_datetime(df_links["data_envio"],format='%d/%m/%Y, %H:%M')
-            df_links = df_links[['link_afiliado','status','cupom', 'data_envio']]
+            df_links['CreatedTime'] = pd.to_datetime(df_links["data_envio"],format='%d/%m/%Y, %H:%M')
             df_links = df_links.sort_values(by='data_envio', ascending=False, na_position='last').reset_index(drop=True)
-            
+            df_links = df_links[['link_afiliado', 'status', 'cupom', 'data_envio','CreatedTime']]
             st.title("🔗 Links")
-            st.dataframe(df_links) 
-  
-
+            st.dataframe(df_links)
 
         with tab3:
             new_record = create_record_form()
             if new_record:
-                record_manager.create_record(new_record)
-                
+                df_links, _ = DataFrameManager.create_dataframe_links(airtable_links.read_records())
+                if links_manager.check_duplicate_link(new_record['links'], df_links):
+                    st.error("Este link já existe na base de dados!")
+                else:
+                    links_manager.create_link_record(
+                        new_record['links'],
+                        new_record['tipo_link'],
+                        new_record['cupom']
+                    )
+                    
         with tab4:
             record_id = st.selectbox("Selecione o registro para editar", 
                                    options=df['id'].tolist(),
