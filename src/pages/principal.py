@@ -59,7 +59,8 @@ class TableConfig:
         "imagem": st.column_config.ImageColumn(
             "Image",
             help="Product image",
-            width="small"
+            width="small",
+
         )
     }
 
@@ -225,12 +226,18 @@ class UI:
         .stButton button { width: 100%; }
         .stDataFrame { margin: 20px 0; }
         .stDataFrame img {
-            min-width: 150px !important;
-            min-height: 150px !important;
-            width: 150px !important;
-            height: 150px !important;
-            object-fit: contain !important;
-            border-radius: 5px;
+            min-width: 200px !important;
+            min-height: 200px !important;
+            width: 200px !important;
+            height: 200px !important;
+            object-fit: cover !important;
+            border-radius: 8px;
+            transition: transform 0.3s ease;
+        }
+        .stDataFrame img:hover {
+            transform: scale(1.5);
+            cursor: pointer;
+            z-index: 999;
         }
         .element-container:has(img) .stMarkdown { display: none; }
         .stDataFrame table {
@@ -247,9 +254,19 @@ class UI:
             color: #ffffff;
             text-align: left;
         }
-        .stDataFrame td { padding: 12px 15px; }
+        .stDataFrame td { 
+            padding: 12px 15px;
+            vertical-align: middle;
+        }
         .stDataFrame tbody tr { border-bottom: 1px solid #dddddd; }
         .stDataFrame tbody tr:nth-of-type(even) { background-color: #f3f3f3; }
+        
+        /* Ajuste da coluna de imagem */
+        .stDataFrame td:has(img) {
+            width: 220px;
+            padding: 10px;
+            text-align: center;
+        }
         </style>
     """
 
@@ -325,17 +342,37 @@ def show():
             if select_all:
                 df['select'] = True
             df = df.sort_values(by='data_envio', ascending=False, na_position='last').reset_index(drop=True)
-            df = df[['select','status', 'data_envio','titulo','cupom', 'de_preconew', 'para_preco', 'imagem', 'id']]
+            
+            # Reordenar e selecionar colunas (excluindo 'id')
+            display_columns = ['select','imagem','status', 'titulo','cupom', 'de_preconew', 'para_preco','data_envio']
+            df_display = df[display_columns]
             
             st.markdown(f"📊 **Total records: {len(df)}**")
-            df = DataFrameManager.apply_search_filter(df, search)
+            df_display = DataFrameManager.apply_search_filter(df_display, search)
             if search:
-                st.markdown(f"🔍 **Showing {len(df)} filtered results**")
-                
+                st.markdown(f"🔍 **Showing {len(df_display)} filtered results**")
+            
+            # Adicionar paginação
+            items_per_page = 20
+            total_pages = len(df_display) // items_per_page + (1 if len(df_display) % items_per_page > 0 else 0)
+            
+            col1, col2, col3 = st.columns([4, 4, 4])
+            with col2:
+                current_page = st.number_input("Página", min_value=1, max_value=total_pages, value=1, step=1)
+            
+            start_idx = (current_page - 1) * items_per_page
+            end_idx = min(start_idx + items_per_page, len(df_display))
+            
             with st.container():
-                edited_df = UI.display_table(df)
+                edited_df = UI.display_table(df_display.iloc[start_idx:end_idx])
+                # Adicionar id de volta para operações de seleção
+                edited_df['id'] = df.iloc[start_idx:end_idx]['id']
                 UI.handle_selected_records(edited_df, record_ids, record_manager)
+            
+            # Mostrar informações da paginação
+            st.markdown(f"Mostrando registros {start_idx + 1} até {end_idx} de {len(df_display)}")
 
+        # Resto do código permanece igual...
         with tab2:
             df_links['data_envio'] = pd.to_datetime(df_links["data_envio"],format='%d/%m/%Y, %H:%M')
             df_links['CreatedTime'] = pd.to_datetime(df_links["data_envio"],format='%d/%m/%Y, %H:%M')
@@ -371,6 +408,5 @@ def show():
                     
     except Exception as e:
         st.error(f"❌ Error: {str(e)}")
-
 if __name__ == "__main__":
     show()

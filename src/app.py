@@ -5,6 +5,19 @@ import pages.principal as principal
 import pages.dashboard as dashboard
 
 
+def clear_session():
+    # Limpa todas as credenciais e tokens
+    st.session_state.authenticated = False
+    if 'saved_credentials' in st.session_state:
+        del st.session_state.saved_credentials
+    if 'refresh_token' in st.session_state:
+        del st.session_state.refresh_token
+    # Limpa qualquer outro estado da sessão se necessário
+    for key in list(st.session_state.keys()):
+        if key.startswith('form_'):
+            del st.session_state[key]
+
+
 def main():
     st.set_page_config(page_title="Records Management System", layout="wide",initial_sidebar_state="collapsed")
     
@@ -28,7 +41,7 @@ def main():
 
         
         if st.sidebar.button("Logout"):
-            st.session_state.authenticated = False
+            clear_session()
             st.rerun()
 
 if __name__ == "__main__":
