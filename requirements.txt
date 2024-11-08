@@ -3,3 +3,4 @@ pyairtable
 python-dotenv
 pandas
 plotly
+PyJWT
